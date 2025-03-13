@@ -1,0 +1,58 @@
+name: Setup Infisical
+
+on:
+  workflow_call:
+    inputs:
+      runner-os:
+        required: true
+        type: string
+    secrets:
+      INFISICAL_CLIENT_ID:
+        required: true
+      INFISICAL_CLIENT_SECRET:
+        required: true
+    outputs:
+      INFISICAL_TOKEN:
+        description: "The generated Infisical token"
+        value: ${{ jobs.setup-infisical.outputs.INFISICAL_TOKEN }}
+
+jobs:
+  setup-infisical:
+    runs-on: ${{ inputs.runner-os }}
+    steps:
+      - name: Cache Infisical binary
+        id: cache-infisical
+        uses: actions/cache@v4
+        with:
+          path: ~/.infisical/bin
+          key: ${{ inputs.runner-os }}-infisical-1.0.0
+          restore-keys: |
+            ${{ inputs.runner-os }}-infisical-
+
+      - name: Install Infisical
+        run: |
+          INFISICAL_PATH="$HOME/.infisical/bin/infisical"
+          mkdir -p "$HOME/.infisical/bin"  # Create the directory if it doesn't exist
+
+          # Check if the binary exists and is executable
+          if [ ! -x "$INFISICAL_PATH" ]; then
+            echo "Infisical not found or not executable, installing..."
+            curl -1sLf \
+              'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.deb.sh' \
+              | sudo -E bash
+            sudo apt-get update && sudo apt-get install -y infisical
+            sudo cp /usr/bin/infisical "$INFISICAL_PATH" || echo "Binary not found at /usr/bin/infisical, assuming custom install"
+            sudo chmod +x "$INFISICAL_PATH"
+          else
+            echo "Infisical found in cache, setting up PATH..."
+          fi
+          # Ensure the binary is in PATH
+          echo "$HOME/.infisical/bin" >> $GITHUB_PATH
+
+      - name: Generate identity token
+        id: gen_token
+        run: |
+          echo "INFISICAL_TOKEN=$(infisical login --method=universal-auth --client-id=${{ secrets.INFISICAL_CLIENT_ID }} --client-secret=${{ secrets.INFISICAL_CLIENT_SECRET }} --plain --silent)" >> $GITHUB_OUTPUT
+
+    outputs:
+      INFISICAL_TOKEN: ${{ steps.gen_token.outputs.INFISICAL_TOKEN }}
